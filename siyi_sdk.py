@@ -116,8 +116,8 @@ class SIYISDK:
 
     def connect(self, maxWaitTime=3.0):
         """
-        Makes sure there is conenction with the camera before doing anything.
-        It requests Frimware version for some time before it gives up
+        Makes sure there is connection with the camera before doing anything.
+        It requests Firmware version for some time before it gives up
 
         Params
         --
