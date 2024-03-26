@@ -7,15 +7,15 @@ Copyright 2022
 
 """
 import socket
+import serial
 from .siyi_message import *
 from time import sleep, time
 import logging
 from .utils import  toInt
 import threading
 
-
 class SIYISDK:
-    def __init__(self, server_ip="192.168.144.25", port=37260, debug=False):
+    def __init__(self, server_ip="192.168.144.25", port=37260, debug=False, communication_mode='udp', serial_port=None, baudrate=9600, serial_timeout=1):
         """
         
         Params
@@ -43,8 +43,18 @@ class SIYISDK:
 
         self._BUFF_SIZE=1024
 
+        self.communication_mode = communication_mode
+        if communication_mode == 'serial':
+            try:
+                self._serial = serial.Serial(serial_port, baudrate=baudrate, timeout=serial_timeout)
+            except serial.SerialException as e:
+                self._logger.error(f"Could not open serial port: {e}")
+        else:
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._rcv_wait_t = 2 # Receiving wait time
+            self._socket.settimeout(self._rcv_wait_t)
+
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._rcv_wait_t = 2 # Receiving wait time
         self._socket.settimeout(self._rcv_wait_t)
 
         self._connected = False
@@ -202,21 +212,39 @@ class SIYISDK:
         --
         msg [str] Message to send
         """
+        self._logger.debug(f"Sending message: {msg}")
         b = bytes.fromhex(msg)
-        try:
-            self._socket.sendto(b, (self._server_ip, self._port))
-            return True
-        except Exception as e:
-            self._logger.error("Could not send bytes")
-            return False
+        if self.communication_mode == 'serial':
+            try:
+                self._serial.write(b)
+                return True
+            except serial.SerialException:
+                self._logger.error("Could not send bytes via serial")
+                return False
+        else:  # Default to UDP
+            try:
+                self._socket.sendto(b, (self._server_ip, self._port))
+                return True
+            except Exception:
+                self._logger.error("Could not send bytes via UDP")
+                return False
 
     def rcvMsg(self):
-        data=None
-        try:
-            data,addr = self._socket.recvfrom(self._BUFF_SIZE)
-        except Exception as e:
-            self._logger.warning("%s. Did not receive message within %s second(s)", e, self._rcv_wait_t)
-        return data
+        if self.communication_mode == 'serial':
+            try:
+                if self._serial.inWaiting() > 0:
+                    data = self._serial.read(self._serial.inWaiting())
+                    return data
+            except serial.SerialException as e:
+                self._logger.warning("Serial read error: %s", e)
+            return None
+        else:  # UDP
+            try:
+                data, addr = self._socket.recvfrom(self._BUFF_SIZE)
+                return data
+            except Exception as e:
+                self._logger.warning("%s. Did not receive message within %s second(s)", e, self._rcv_wait_t)
+                return None
 
     def recvLoop(self):
         self._logger.debug("Started data receiving thread")
