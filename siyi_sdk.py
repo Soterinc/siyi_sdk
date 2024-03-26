@@ -15,7 +15,7 @@ from .utils import  toInt
 import threading
 
 class SIYISDK:
-    def __init__(self, server_ip="192.168.144.25", port=37260, debug=False, communication_mode='udp', serial_port=None, baudrate=9600, serial_timeout=1):
+    def __init__(self, server_ip="192.168.144.25", port=37260, debug=False, communication_mode='udp', serial_port=None, baudrate=115200, serial_timeout=5):
         """
         
         Params
