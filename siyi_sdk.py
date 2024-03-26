@@ -53,9 +53,8 @@ class SIYISDK:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self._rcv_wait_t = 2 # Receiving wait time
             self._socket.settimeout(self._rcv_wait_t)
-
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._socket.settimeout(self._rcv_wait_t)
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._socket.settimeout(self._rcv_wait_t)
 
         self._connected = False
 
