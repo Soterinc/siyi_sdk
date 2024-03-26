@@ -53,8 +53,6 @@ class SIYISDK:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self._rcv_wait_t = 2 # Receiving wait time
             self._socket.settimeout(self._rcv_wait_t)
-            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self._socket.settimeout(self._rcv_wait_t)
 
         self._connected = False
 
@@ -256,8 +254,21 @@ class SIYISDK:
         """
         Receives messages and parses its content
         """
-        buff,addr = self._socket.recvfrom(self._BUFF_SIZE)
-
+        
+        if self.communication_mode == 'serial':
+            try:
+                if self._serial.inWaiting() > 0:
+                    buff = self._serial.read(self._serial.inWaiting())
+            except serial.SerialException as e:
+                self._logger.warning("Serial read error: %s", e)
+            return None
+        else:  # UDP
+            try:
+                buff, addr = self._socket.recvfrom(self._BUFF_SIZE)
+            except Exception as e:
+                self._logger.warning("%s. Did not receive message within %s second(s)", e, self._rcv_wait_t)
+                return None
+        
         buff_str = buff.hex()
         self._logger.debug("Buffer: %s", buff_str)
 
