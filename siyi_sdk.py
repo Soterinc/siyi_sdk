@@ -9,7 +9,7 @@ Copyright 2022
 import socket
 import serial
 from .siyi_message import *
-from time import sleep, time
+import time
 import logging
 from .utils import  toInt
 import threading
