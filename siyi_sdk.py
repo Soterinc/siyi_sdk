@@ -47,6 +47,7 @@ class SIYISDK:
         if communication_mode == 'serial':
             try:
                 self._serial = serial.Serial(serial_port, baudrate=baudrate, timeout=serial_timeout)
+                self._serial.open()
             except serial.SerialException as e:
                 self._logger.error(f"Could not open serial port: {e}")
         else:
