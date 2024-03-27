@@ -273,9 +273,12 @@ class SIYISDK:
             try:
                 if self._serial.inWaiting() > 0:
                     buff = self._serial.read(self._serial.inWaiting())
+                    self._logger.debug("Reading message buffer: %s", buff.hex())
+                else:
+                    buff = b'\x00'
             except serial.SerialException as e:
                 self._logger.warning("Serial read error: %s", e)
-            return None
+                return None
         else:  # UDP
             try:
                 buff, addr = self._socket.recvfrom(self._BUFF_SIZE)
