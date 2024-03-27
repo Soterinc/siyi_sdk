@@ -18,7 +18,7 @@ sys.path.append(parent_directory)
 from siyi_sdk import SIYISDK
 
 def test():
-    cam = SIYISDK(communication_mode='serial', port='/dev/ttyS0', baudrate=115200)
+    cam = SIYISDK(communication_mode='serial', serial_port='/dev/serial0', baudrate=115200)
     if not cam.connect():
         print("No connection ")
         exit(1)

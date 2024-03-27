@@ -9,7 +9,7 @@ Copyright 2022
 import socket
 import serial
 from .siyi_message import *
-import time
+from time import time, sleep
 import logging
 from .utils import  toInt
 import threading
@@ -49,7 +49,6 @@ class SIYISDK:
               self._serial = serial.Serial(serial_port, baudrate=baudrate, timeout=serial_timeout)
               if self._serial.is_open:
                   print("Serial port opened successfully.")
-                  return True
               else:
                   start_time = time.perf_counter()
                   while (time.perf_counter() - start_time) < serial_timeout:
@@ -59,10 +58,10 @@ class SIYISDK:
                           print("Serial port opened successfully.")
                           return True
                   print("Timed out waiting for serial port to open.")
-                  return False
+                  return
           except serial.SerialException as e:
             print(f"Failed to open serial port: {e}")
-            return False
+            return
 
         else:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
