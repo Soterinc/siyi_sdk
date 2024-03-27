@@ -15,7 +15,7 @@ from .utils import  toInt
 import threading
 
 class SIYISDK:
-    def __init__(self, server_ip="192.168.144.25", port=37260, debug=False, communication_mode='udp', serial_port=None, baudrate=115200, serial_timeout=5):
+    def __init__(self, server_ip="192.168.144.25", port=37260, debug=False, communication_mode='udp', serial_port=None, baudrate=115200, serial_timeout=10):
         """
         
         Params
@@ -45,11 +45,25 @@ class SIYISDK:
 
         self.communication_mode = communication_mode
         if communication_mode == 'serial':
-            try:
-                self._serial = serial.Serial(serial_port, baudrate=baudrate, timeout=serial_timeout)
-                self._serial.open()
-            except serial.SerialException as e:
-                self._logger.error(f"Could not open serial port: {e}")
+          try:
+              self._serial = serial.Serial(serial_port, baudrate=baudrate, timeout=serial_timeout)
+              if self._serial.is_open:
+                  print("Serial port opened successfully.")
+                  return True
+              else:
+                  start_time = time.perf_counter()
+                  while (time.perf_counter() - start_time) < serial_timeout:
+                      print("Waiting for port to open...")
+                      time.sleep(1)  # Consider a shorter sleep for more responsiveness
+                      if self._serial.is_open:
+                          print("Serial port opened successfully.")
+                          return True
+                  print("Timed out waiting for serial port to open.")
+                  return False
+          except serial.SerialException as e:
+            print(f"Failed to open serial port: {e}")
+            return False
+
         else:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self._rcv_wait_t = 2 # Receiving wait time
