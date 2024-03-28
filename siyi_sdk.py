@@ -287,7 +287,7 @@ class SIYISDK:
                 return None
         
         buff_str = buff.hex()
-        self._logger.debug("Buffer: %s", buff_str)
+        #self._logger.debug("Buffer: %s", buff_str)
 
         # 10 bytes: STX+CTRL+Data_len+SEQ+CMD_ID+CRC16
         #            2 + 1  +    2   + 2 +   1  + 2
@@ -346,6 +346,8 @@ class SIYISDK:
                 self.parseZoomMsg(data, seq)
             elif cmd_id==COMMAND.CENTER:
                 self.parseGimbalCenterMsg(data, seq)
+            elif cmd_id==COMMAND.SET_GIMBAL_ANGLE:
+                self.parseAngleMsg(data, seq)
             else:
                 self._logger.warning("CMD ID is not recognized")
         
@@ -541,6 +543,24 @@ class SIYISDK:
             return False
         return True
 
+    def requestGimbalPosition(self, yaw:int, pitch:int):
+        """
+        Sends request for to set gimbal angles 
+
+        Params
+        --
+        yaw [int] -135~0~135. away from zero -> fast, close to zero -> slow. Sign is for direction
+        pitch [int] -90~0~25
+        
+        Returns
+        --
+        [bool] True: success. False: fail
+        """
+        msg = self._out_msg.gimbalPositionMsg(yaw, pitch)
+        if not self.sendMsg(msg):
+            return False
+        return True
+
     def requestPhoto(self):
         """
         Sends request for taking photo
@@ -647,6 +667,21 @@ class SIYISDK:
                                     self._att_msg.yaw, self._att_msg.pitch, self._att_msg.roll)
             self._logger.debug("(yaw_speed, pitch_speed, roll_speed= (%s, %s, %s)", 
                                     self._att_msg.yaw_speed, self._att_msg.pitch_speed, self._att_msg.roll_speed)
+            return True
+        except Exception as e:
+            self._logger.error("Error %s", e)
+            return False
+
+    def parseAngleMsg(self, msg:str, seq:int):
+        
+        try:
+            self._att_msg.seq=seq
+            self._att_msg.yaw = toInt(msg[2:4]+msg[0:2]) /10.
+            self._att_msg.pitch = toInt(msg[6:8]+msg[4:6]) /10.
+            self._att_msg.roll = toInt(msg[10:12]+msg[8:10]) /10.
+
+            self._logger.debug("(yaw, pitch, roll= (%s, %s, %s)", 
+                                    self._att_msg.yaw, self._att_msg.pitch, self._att_msg.roll)
             return True
         except Exception as e:
             self._logger.error("Error %s", e)
@@ -833,6 +868,50 @@ class SIYISDK:
             self._logger.debug("yaw speed setpoint= %s", y_speed_sp)
             self._logger.debug("pitch speed setpoint= %s", p_speed_sp)
             self.requestGimbalSpeed(y_speed_sp, p_speed_sp)
+
+            sleep(0.1) # command frequency
+
+    def setGimbalPosition(self, yaw, pitch, err_thresh=1.0):
+        """
+        Sets gimbal attitude angles yaw and pitch in degrees
+
+        Params
+        --
+        yaw: [float] desired yaw in degrees
+        pitch: [float] desired pitch in degrees
+        err_thresh: [float] acceptable error threshold, in degrees, to stop correction
+        kp [float] proportional gain
+        """
+        if (pitch >25 or pitch <-90):
+            self._logger.error("desired pitch is outside controllable range -90~25")
+            return
+
+        if (yaw >135 or yaw <-135):
+            self._logger.error("Desired yaw is outside controllable range -45~45")
+            return
+
+        th = err_thresh
+        while(True):
+            self.requestGimbalAttitude()
+            if self._att_msg.seq==self._last_att_seq:
+                self._logger.info("Did not get new attitude msg")
+                self.requestGimbalSpeed(0,0)
+                continue
+
+            self._last_att_seq = self._att_msg.seq
+
+            yaw_err = -yaw + self._att_msg.yaw # NOTE for some reason it's reversed!!
+            pitch_err = pitch - self._att_msg.pitch
+
+            self._logger.debug("yaw_err= %s", yaw_err)
+            self._logger.debug("pitch_err= %s", pitch_err)
+
+            if (abs(yaw_err) <= th and abs(pitch_err)<=th):
+                self.requestGimbalSpeed(0, 0)
+                self._logger.info("Goal rotation is reached")
+                break
+
+            self.requestGimbalPosition(yaw, pitch)
 
             sleep(0.1) # command frequency
 

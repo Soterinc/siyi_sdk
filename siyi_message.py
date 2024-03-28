@@ -9,7 +9,7 @@ Copyright 2022
 from os import stat
 from .crc16_python import crc16_str_swap
 import logging
-from .utils import toHex
+from .utils import toHex, format_hex
 
 class FirmwareMsg:
     seq=0
@@ -95,6 +95,7 @@ class COMMAND:
     FUNC_FEEDBACK_INFO = '0b'
     PHOTO_VIDEO_HDR = '0c'
     ACQUIRE_GIMBAL_ATT = '0d'
+    SET_GIMBAL_ANGLE = '0e'
 
 
 #############################################
@@ -470,4 +471,36 @@ class SIYIMESSAGE:
         data2=toHex(pitch_speed, 8)
         data=data1+data2
         cmd_id = COMMAND.GIMBAL_ROT
+        return self.encodeMsg(data, cmd_id)
+
+    def gimbalPositionMsg(self, yaw, pitch):
+        """
+        Gimbal position Msg.
+        Values -100~0~100: Negative and positive represent two directions,
+        higher or lower the number is away from 0, faster the rotation speed is.
+        Send 0 when released from control command and gimbal stops rotation.
+
+        Params
+        --
+        - yaw [int] in degrees 
+        - pitch [int] in degrees 
+        """
+        if yaw>135:
+            yaw=135
+        if yaw<-135:
+            yaw=-135
+
+        if pitch>25:
+            pitch=25
+        if pitch<-90:
+            pitch=-90
+
+        data1=format_hex(10*yaw)
+        data2=format_hex(10*pitch)
+        
+        self._logger.debug("data1 %s", data1)
+        self._logger.debug("data2 %s", data2)
+        data=data1[2:4]+data1[0:2]+data2[2:4]+data2[0:2]
+        self._logger.debug("data %s", data)
+        cmd_id = COMMAND.SET_GIMBAL_ANGLE
         return self.encodeMsg(data, cmd_id)

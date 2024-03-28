@@ -37,3 +37,13 @@ def toInt(hexval):
     if val & (1 << (bits-1)):
         val -= 1 << bits
     return val
+
+def format_hex(number, bits=16):
+    if number < 0:
+        # Compute two's complement for negative numbers
+        number = (1 << bits) + number
+    # Format the number as hex and remove the '0x' prefix
+    hex_str = hex(number)[2:]
+    # Ensure the hex string is the correct length
+    hex_str = hex_str.zfill(bits // 4)
+    return hex_str
