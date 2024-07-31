@@ -29,7 +29,7 @@ def test():
         sleep(5)
 
     if (cam.getRecordingState()==cam._record_msg.TF_EMPTY):
-        print("TF card lsot is empty")
+        print("TF card slot is empty")
 
     if (cam.getRecordingState()==cam._record_msg.ON):
         print("Recording is ON. Sending requesdt to stop recording")
