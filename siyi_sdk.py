@@ -889,31 +889,33 @@ class SIYISDK:
         if (yaw >135 or yaw <-135):
             self._logger.error("Desired yaw is outside controllable range -45~45")
             return
+        
+        self.requestGimbalPosition(yaw, pitch)
 
-        th = err_thresh
-        while(True):
-            self.requestGimbalAttitude()
-            if self._att_msg.seq==self._last_att_seq:
-                self._logger.info("Did not get new attitude msg")
-                self.requestGimbalSpeed(0,0)
-                continue
+        # th = err_thresh
+        # while(True):
+        #     self.requestGimbalAttitude()
+        #     if self._att_msg.seq==self._last_att_seq:
+        #         self._logger.info("Did not get new attitude msg")
+        #         self.requestGimbalSpeed(0,0)
+        #         continue
 
-            self._last_att_seq = self._att_msg.seq
+        #     self._last_att_seq = self._att_msg.seq
 
-            yaw_err = -yaw + self._att_msg.yaw # NOTE for some reason it's reversed!!
-            pitch_err = pitch - self._att_msg.pitch
+        #     yaw_err = -yaw + self._att_msg.yaw # NOTE for some reason it's reversed!!
+        #     pitch_err = pitch - self._att_msg.pitch
 
-            self._logger.debug("yaw_err= %s", yaw_err)
-            self._logger.debug("pitch_err= %s", pitch_err)
+        #     self._logger.debug("yaw_err= %s", yaw_err)
+        #     self._logger.debug("pitch_err= %s", pitch_err)
 
-            if (abs(yaw_err) <= th and abs(pitch_err)<=th):
-                self.requestGimbalSpeed(0, 0)
-                self._logger.info("Goal rotation is reached")
-                break
+        #     if (abs(yaw_err) <= th and abs(pitch_err)<=th):
+        #         self.requestGimbalSpeed(0, 0)
+        #         self._logger.info("Goal rotation is reached")
+        #         break
 
-            self.requestGimbalPosition(yaw, pitch)
+        #     self.requestGimbalPosition(yaw, pitch)
 
-            sleep(0.1) # command frequency
+        #     sleep(0.1) # command frequency
 
 def test():
     cam=SIYISDK(debug=False)
