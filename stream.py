@@ -24,7 +24,7 @@ import cv2
 import logging
 from time import time, sleep
 import threading
-import platform
+import subprocess
 
 class SIYIRTSP:
     def __init__(self, rtsp_url="rtsp://192.168.144.25:8554/main.264", cam_name="ZR10", debug=False, use_udp=True) -> None:
