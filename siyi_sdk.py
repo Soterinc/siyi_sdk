@@ -16,7 +16,7 @@ import cameras
 
 
 class SIYISDK:
-    def __init__(self, server_ip="192.168.144.25", port=37260, debug=False):
+    def __init__(self, server_ip="192.168.144.25", port=37260, debug=False, communication_mode='udp', serial_port=None, baudrate=115200, serial_timeout=10):
         """
         Params
         --
@@ -43,9 +43,30 @@ class SIYISDK:
 
         self._BUFF_SIZE = 1024
 
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._rcv_wait_t = 5  # Receiving wait time
-        self._socket.settimeout(self._rcv_wait_t)
+        self.communication_mode = communication_mode
+        if communication_mode == 'serial':
+          try:
+              self._serial = serial.Serial(serial_port, baudrate=baudrate, timeout=serial_timeout)
+              if self._serial.is_open:
+                  print("Serial port opened successfully.")
+              else:
+                  start_time = time.perf_counter()
+                  while (time.perf_counter() - start_time) < serial_timeout:
+                      print("Waiting for port to open...")
+                      time.sleep(1)  # Consider a shorter sleep for more responsiveness
+                      if self._serial.is_open:
+                          print("Serial port opened successfully.")
+                          return True
+                  print("Timed out waiting for serial port to open.")
+                  return
+          except serial.SerialException as e:
+            print(f"Failed to open serial port: {e}")
+            return
+
+        else:
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._rcv_wait_t = 5 # Receiving wait time
+            self._socket.settimeout(self._rcv_wait_t)
 
         self.resetVars()
 
@@ -63,7 +84,7 @@ class SIYISDK:
         self._gimbal_info_loop_rate = 1
         self._g_info_thread = threading.Thread(target=self.gimbalInfoLoop, args=(self._gimbal_info_loop_rate,))
 
-        # Gimbal attitude thread @ 10Hz
+        # Gimbal attitude thread @ 50Hz
         self._gimbal_att_loop_rate = 0.02
         self._g_att_thread = threading.Thread(target=self.gimbalAttLoop, args=(self._gimbal_att_loop_rate,))
 
@@ -273,21 +294,39 @@ class SIYISDK:
         --
         msg [str] Message to send
         """
+        self._logger.debug(f"Sending message: {msg}")
         b = bytes.fromhex(msg)
-        try:
-            self._socket.sendto(b, (self._server_ip, self._port))
-            return True
-        except Exception as e:
-            self._logger.error("Could not send bytes")
-            return False
+        if self.communication_mode == 'serial':
+            try:
+                self._serial.write(b)
+                return True
+            except serial.SerialException:
+                self._logger.error("Could not send bytes via serial")
+                return False
+        else:  # Default to UDP
+            try:
+                self._socket.sendto(b, (self._server_ip, self._port))
+                return True
+            except Exception:
+                self._logger.error("Could not send bytes via UDP")
+                return False
 
     def rcvMsg(self):
-        data=None
-        try:
-            data,addr = self._socket.recvfrom(self._BUFF_SIZE)
-        except Exception as e:
-            self._logger.warning("%s. Did not receive message within %s second(s)", e, self._rcv_wait_t)
-        return data
+        if self.communication_mode == 'serial':
+            try:
+                if self._serial.inWaiting() > 0:
+                    data = self._serial.read(self._serial.inWaiting())
+                    return data
+            except serial.SerialException as e:
+                self._logger.warning("Serial read error: %s", e)
+            return None
+        else:  # UDP
+            try:
+                data, addr = self._socket.recvfrom(self._BUFF_SIZE)
+                return data
+            except Exception as e:
+                self._logger.warning("%s. Did not receive message within %s second(s)", e, self._rcv_wait_t)
+                return None
 
     def recvLoop(self):
         self._logger.debug("Started data receiving thread")
@@ -300,14 +339,26 @@ class SIYISDK:
         """
         Receives messages and parses its content
         """
-        try:
-            buff,addr = self._socket.recvfrom(self._BUFF_SIZE)
-        except Exception as e:
-            self._logger.error(f"[bufferCallback] {e}")
-            return
-
+        
+        if self.communication_mode == 'serial':
+            try:
+                if self._serial.inWaiting() > 0:
+                    buff = self._serial.read(self._serial.inWaiting())
+                    self._logger.debug("Reading message buffer: %s", buff.hex())
+                else:
+                    buff = b'\x00'
+            except serial.SerialException as e:
+                self._logger.warning("Serial read error: %s", e)
+                return None
+        else:  # UDP
+            try:
+                buff, addr = self._socket.recvfrom(self._BUFF_SIZE)
+            except Exception as e:
+                self._logger.warning("%s. Did not receive message within %s second(s)", e, self._rcv_wait_t)
+                return None
+        
         buff_str = buff.hex()
-        self._logger.debug("Buffer: %s", buff_str)
+        #self._logger.debug("Buffer: %s", buff_str)
 
         # 10 bytes: STX+CTRL+Data_len+SEQ+CMD_ID+CRC16
         #            2 + 1  +    2   + 2 +   1  + 2
@@ -566,7 +617,22 @@ class SIYISDK:
         [bool] True: success. False: fail
         """
         msg = self._out_msg.gimbalSpeedMsg(yaw_speed, pitch_speed)
+        return self.sendMsg(msg)
 
+    def requestGimbalPosition(self, yaw:int, pitch:int):
+        """
+        Sends request for to set gimbal angles 
+
+        Params
+        --
+        yaw [int] -135~0~135. away from zero -> fast, close to zero -> slow. Sign is for direction
+        pitch [int] -90~0~25
+        
+        Returns
+        --
+        [bool] True: success. False: fail
+        """
+        msg = self._out_msg.gimbalPositionMsg(yaw, pitch)
         return self.sendMsg(msg)
 
     def requestPhoto(self):
@@ -578,7 +644,6 @@ class SIYISDK:
         [bool] True: success. False: fail
         """
         msg = self._out_msg.takePhotoMsg()
-
         return self.sendMsg(msg)
 
     def requestRecording(self):
@@ -590,7 +655,6 @@ class SIYISDK:
         [bool] True: success. False: fail
         """
         msg = self._out_msg.recordMsg()
-
         return self.sendMsg(msg)
 
     def requestFPVMode(self):
@@ -602,7 +666,6 @@ class SIYISDK:
         [bool] True: success. False: fail
         """
         msg = self._out_msg.fpvModeMsg()
-
         return self.sendMsg(msg)
 
     def requestLockMode(self):
@@ -614,7 +677,6 @@ class SIYISDK:
         [bool] True: success. False: fail
         """
         msg = self._out_msg.lockModeMsg()
-
         return self.sendMsg(msg)
 
     def requestFollowMode(self):
@@ -748,6 +810,21 @@ class SIYISDK:
                                     self._att_msg.yaw, self._att_msg.pitch, self._att_msg.roll)
             self._logger.debug("(yaw_speed, pitch_speed, roll_speed= (%s, %s, %s)", 
                                     self._att_msg.yaw_speed, self._att_msg.pitch_speed, self._att_msg.roll_speed)
+            return True
+        except Exception as e:
+            self._logger.error("Error %s", e)
+            return False
+
+    def parseAngleMsg(self, msg:str, seq:int):
+        
+        try:
+            self._att_msg.seq=seq
+            self._att_msg.yaw = toInt(msg[2:4]+msg[0:2]) /10.
+            self._att_msg.pitch = toInt(msg[6:8]+msg[4:6]) /10.
+            self._att_msg.roll = toInt(msg[10:12]+msg[8:10]) /10.
+
+            self._logger.debug("(yaw, pitch, roll= (%s, %s, %s)", 
+                                    self._att_msg.yaw, self._att_msg.pitch, self._att_msg.roll)
             return True
         except Exception as e:
             self._logger.error("Error %s", e)
@@ -985,6 +1062,52 @@ class SIYISDK:
 
             sleep(0.1) # command frequency
 
+    def setGimbalPosition(self, yaw, pitch, err_thresh=1.0):
+        """
+        Sets gimbal attitude angles yaw and pitch in degrees
+
+        Params
+        --
+        yaw: [float] desired yaw in degrees
+        pitch: [float] desired pitch in degrees
+        err_thresh: [float] acceptable error threshold, in degrees, to stop correction
+        kp [float] proportional gain
+        """
+        if (pitch >25 or pitch <-90):
+            self._logger.error("desired pitch is outside controllable range -90~25")
+            return
+
+        if (yaw >135 or yaw <-135):
+            self._logger.error("Desired yaw is outside controllable range -45~45")
+            return
+        
+        self.requestGimbalPosition(yaw, pitch)
+
+        # th = err_thresh
+        # while(True):
+        #     self.requestGimbalAttitude()
+        #     if self._att_msg.seq==self._last_att_seq:
+        #         self._logger.info("Did not get new attitude msg")
+        #         self.requestGimbalSpeed(0,0)
+        #         continue
+
+        #     self._last_att_seq = self._att_msg.seq
+
+        #     yaw_err = -yaw + self._att_msg.yaw # NOTE for some reason it's reversed!!
+        #     pitch_err = pitch - self._att_msg.pitch
+
+        #     self._logger.debug("yaw_err= %s", yaw_err)
+        #     self._logger.debug("pitch_err= %s", pitch_err)
+
+        #     if (abs(yaw_err) <= th and abs(pitch_err)<=th):
+        #         self.requestGimbalSpeed(0, 0)
+        #         self._logger.info("Goal rotation is reached")
+        #         break
+
+        #     self.requestGimbalPosition(yaw, pitch)
+
+        #     sleep(0.1) # command frequency
+
 def test():
     cam=SIYISDK(debug=False)
 
@@ -1014,6 +1137,9 @@ def test():
     cam.requestPhoto()
     sleep(1)
     print("Feedback: ", cam.getFunctionFeedback())
+
+    cam.setGimbalRotation(10,20, err_thresh=1, kp=4)
+    cam.setGimbalRotation(-10,-90, err_thresh=1, kp=4)
 
     cam.disconnect()
 
