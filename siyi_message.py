@@ -7,9 +7,9 @@ Copyright 2022
 
 """
 from os import stat
-from .crc16_python import crc16_str_swap
+from crc16_python import crc16_str_swap
 import logging
-from .utils import toHex, format_hex
+from utils import toHex
 
 class FirmwareMsg:
     seq=0
@@ -18,8 +18,16 @@ class FirmwareMsg:
     zoom_firmware_ver=''
 
 class HardwareIDMsg:
+    # x6B: ZR10
+    # x73: A8 mini
+    # x75: A2 mini
+    # x78: ZR30
+    # x82: ZT6
+    # x7A: ZT30
+    CAM_DICT ={'6B': 'ZR10', '73': 'A8 mini', '75': 'A2 mini', '78': 'ZR30', '82': 'ZT6', '7A': 'ZT30'}
     seq=0
     id=''
+    cam_type_str=''
 
 class AutoFocusMsg:
     seq=0
@@ -82,6 +90,33 @@ class AttitdueMsg:
     pitch_speed=0.0
     roll_speed= 0.0
 
+class SetGimbalAnglesMsg:
+    seq = 0
+    yaw = 0.0
+    pitch = 0.0
+    roll = 0.0
+
+class RequestDataStreamMsg:
+    # data_type uint8_t
+    ATTITUDE_DATA = '01'
+    LASER_DATA = '02'
+
+    # Frequency
+    FREQ = {0: '00', 2: '01', 4: '02', 5: '03', 10: '04', 20: '05', 50: '06', 100: '07'}
+
+    seq = 0 
+    data_type = 1 # uint8_t
+    data_frequency = 0 # 0 means OFF (0, 2, 4, 5, 10, 20, 50, 100)
+
+class RequestAbsoluteZoomMsg:
+    seq = 0
+    success = 0
+
+class  CurrentZoomValueMsg:
+    seq = 0
+    int_part = 1
+    float_part = 0
+    level=0.0
 
 class COMMAND:
     ACQUIRE_FW_VER = '01'
@@ -89,13 +124,18 @@ class COMMAND:
     AUTO_FOCUS = '04'
     MANUAL_ZOOM = '05'
     MANUAL_FOCUS = '06'
+    GIMBAL_SPEED = '07'
     GIMBAL_ROT = '07'
     CENTER = '08'
     ACQUIRE_GIMBAL_INFO = '0a'
     FUNC_FEEDBACK_INFO = '0b'
     PHOTO_VIDEO_HDR = '0c'
     ACQUIRE_GIMBAL_ATT = '0d'
+    SET_GIMBAL_ATTITUDE = '0e'
     SET_GIMBAL_ANGLE = '0e'
+    SET_DATA_STREAM = '25'
+    ABSOLUTE_ZOOM = '0f'
+    CURRENT_ZOOM_VALUE = '18'
 
 
 #############################################
@@ -401,7 +441,7 @@ class SIYIMESSAGE:
         """
         Zoom in Msg
         """
-        data="01"
+        data=toHex(1,8)
         cmd_id = COMMAND.MANUAL_ZOOM
         return self.encodeMsg(data, cmd_id)
 
@@ -409,7 +449,7 @@ class SIYIMESSAGE:
         """
         Zoom out Msg
         """
-        data="ff"
+        data=toHex(-1,8)
         cmd_id = COMMAND.MANUAL_ZOOM
         return self.encodeMsg(data, cmd_id)
 
@@ -417,7 +457,7 @@ class SIYIMESSAGE:
         """
         Stop Zoom Msg
         """
-        data="00"
+        data=toHex(0,8)
         cmd_id = COMMAND.MANUAL_ZOOM
         return self.encodeMsg(data, cmd_id)
 
@@ -470,7 +510,81 @@ class SIYIMESSAGE:
         data1=toHex(yaw_speed, 8)
         data2=toHex(pitch_speed, 8)
         data=data1+data2
-        cmd_id = COMMAND.GIMBAL_ROT
+        cmd_id = COMMAND.GIMBAL_SPEED
+        return self.encodeMsg(data, cmd_id)
+
+    def setGimbalAttitude(self, target_yaw_deg, target_pitch_deg):
+        """
+        Set gimbal angles Msg.
+        Values are in degrees and depend on the camera specs.
+        The accuracy of the control angle is in one decimal place.
+        Eg: Set yaw as 60.5 degrees, the command number should be set as 605.
+        The actual angle data returned to be divided by 10 is the actual degree, accuracy in one decimal place.
+
+        Params
+        --
+        - target_yaw_deg [in16t] in degrees up to 1 decimal. e.g. 60.5 should 605
+        - pitch_speed [int16] in degrees up to 1 decimal
+        """
+
+        yaw_hex = toHex(target_yaw_deg, 16)
+        pitch_hex = toHex(target_pitch_deg, 16)
+        data = yaw_hex+pitch_hex
+        cmd_id = COMMAND.SET_GIMBAL_ATTITUDE
+        return self.encodeMsg(data, cmd_id)
+    
+    def dataStreamMsg(self, dtype: int, freq: int):
+        """
+        Request data stream at specific rate.
+        Supported stream are
+        Attitude and Laser. Laser only for ZT 30, but frequency is not supported yet. 
+        Frequency is supported for attitude,
+
+        Params
+        --
+        - dtype [uint8_t] 1: attitude, 2: laser
+        - freq [uint8_t] frequencey options (0: OFF, 2, 4, 5,10, 20 ,50 ,100)
+        """
+        if dtype == 1:
+            data_type_hex = RequestDataStreamMsg.ATTITUDE_DATA
+        elif dtype == 2:
+            data_type_hex = RequestDataStreamMsg.LASER_DATA
+        else:
+            self._logger.error(f"Data stream type {type} not supported. Must be 1 (atitude) or 2 (laser)")
+            return ''
+        
+        f = int(freq)
+        try:
+            f_hex = RequestDataStreamMsg.FREQ[f]
+        except Exception as e:
+            self._logger.error(f"Frequency {freq} not supported {e}. Not requesting attitude stream.")
+            return ''
+        data = data_type_hex+f_hex
+        cmd_id = COMMAND.SET_DATA_STREAM
+        return self.encodeMsg(data, cmd_id)
+    
+    def absoluteZoomMsg(self, zoom_level: float):
+        """
+        Params
+        --
+        - zoom_level [float] the integer par
+        """
+
+        # Get the integer part
+        integer_part = int(zoom_level)
+        # Get the first decimal place as an integer
+        decimal_part = int((zoom_level * 10) % 10)
+
+        d1 = toHex(integer_part, 8)
+        d2 = toHex(decimal_part, 8)
+        data = d1+d2
+        cmd_id = COMMAND.ABSOLUTE_ZOOM
+
+        return self.encodeMsg(data, cmd_id)
+    
+    def requestCurrentZoomMsg(self):
+        data=""
+        cmd_id = COMMAND.CURRENT_ZOOM_VALUE
         return self.encodeMsg(data, cmd_id)
 
     def gimbalPositionMsg(self, yaw, pitch):
