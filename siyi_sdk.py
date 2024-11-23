@@ -12,7 +12,7 @@ from time import sleep, time
 import logging
 from siyi_sdk.utils import  toInt
 import threading
-import siyi_sdk.cameras
+from siyi_sdk.cameras import cameras
 
 
 class SIYISDK:
