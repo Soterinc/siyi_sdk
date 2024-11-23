@@ -9,7 +9,7 @@ Copyright 2022
 from os import stat
 from siyi_sdk.crc16_python import crc16_str_swap
 import logging
-from siyi_sdk.utils import toHex
+from siyi_sdk.utils import toHex, format_hex
 
 class FirmwareMsg:
     seq=0
@@ -609,8 +609,8 @@ class SIYIMESSAGE:
         if pitch<-90:
             pitch=-90
 
-        data1=toHex(10*yaw, 16)
-        data2=toHex(10*pitch, 16)
+        data1=format_hex(10*yaw)
+        data2=format_hex(10*pitch)
         
         self._logger.debug("data1 %s", data1)
         self._logger.debug("data2 %s", data2)
