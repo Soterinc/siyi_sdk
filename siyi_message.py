@@ -609,8 +609,8 @@ class SIYIMESSAGE:
         if pitch<-90:
             pitch=-90
 
-        data1=format_hex(10*yaw)
-        data2=format_hex(10*pitch)
+        data1=format_hex(int(10*yaw))
+        data2=format_hex(int(10*pitch))
         
         self._logger.debug("data1 %s", data1)
         self._logger.debug("data2 %s", data2)
